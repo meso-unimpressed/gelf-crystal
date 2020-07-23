@@ -5,7 +5,7 @@ module GELF
 
     property! facility : String
     property! host : String
-    property level : Logger::Severity
+    property level : ::Logger::Severity
 
     def initialize(host, port, @max_size = :wan)
       @sender = UdpSender.new(host, port)
@@ -28,19 +28,19 @@ module GELF
 
     {% for level in ["DEBUG", "INFO", "WARN", "ERROR", "FATAL", "UNKNOWN"] %}
       def {{level.id.downcase}}(message : HashType, progname : String? = nil)
-        add(Logger::{{level.id}}, message, progname)
+        add(::Logger::{{level.id}}, message, progname)
       end
 
       def {{level.id.downcase}}(message : String, progname : String? = nil)
-        add(Logger::{{level.id}}, message, progname)
+        add(::Logger::{{level.id}}, message, progname)
       end
 
       def {{level.id.downcase}}(progname : String? = nil)
-          add(Logger::{{level.id}}, yield, progname)
+          add(::Logger::{{level.id}}, yield, progname)
       end
 
       def {{level.id.downcase}}?
-        Logger::{{level.id}} >= level
+        ::Logger::{{level.id}} >= level
       end
     {% end %}
 
@@ -60,17 +60,17 @@ module GELF
       message["version"] = "1.1"
       message["host"] = host
       message["level"] = GELF::LOGGER_MAPPING[level]
-      message["timestamp"] = "%f" % Time.now.epoch_f
+      message["timestamp"] = "%f" % Time.utc.to_unix_f
       message["short_message"] ||= "Message must be set!"
 
       data = serialize_message(message)
 
       if data.size > max_chunk_size
-        msg_id = SecureRandom.hex(4)
+        msg_id = Random::Secure.hex(4)
         num_slices = (data.size / max_chunk_size.to_f).ceil.to_i
 
         num_slices.times do |index|
-          io = MemoryIO.new
+          io = IO::Memory.new
 
           # Magic bytes
           io.write_byte(0x1e_u8)
@@ -93,14 +93,14 @@ module GELF
       else
         @sender.write(data)
       end
-    rescue e : Errno
+    rescue e : Socket::Error
       puts "Error sending log to server: #{e.message}"
       p message
     end
 
     private def serialize_message(message)
-      io = MemoryIO.new
-      deflater = Zlib::Deflate.new(io)
+      io = IO::Memory.new
+      deflater = Compress::Zlib::Writer.new(io)
       json = message.to_json
       deflater.print(json)
       deflater.close
